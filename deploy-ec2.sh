@@ -158,7 +158,7 @@ server {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -176,7 +176,7 @@ server {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -196,20 +196,12 @@ sudo rm -f /etc/nginx/sites-enabled/default
 
 # Añadir configuración adicional para WebSockets
 print_status "Añadiendo configuración adicional para WebSockets..."
-sudo tee -a /etc/nginx/nginx.conf > /dev/null <<EOF
-
+# Crear archivo de configuración adicional en lugar de modificar nginx.conf
+sudo tee /etc/nginx/conf.d/websockets.conf > /dev/null <<EOF
 # Configuración adicional para WebSockets
-http {
-    # Aumentar buffer sizes para WebSockets
-    proxy_buffering off;
-    proxy_buffer_size 4k;
-    proxy_buffers 8 4k;
-    
-    # Configuración para WebSockets
-    map \$http_upgrade \$connection_upgrade {
-        default upgrade;
-        '' close;
-    }
+map \$http_upgrade \$connection_upgrade {
+    default upgrade;
+    '' close;
 }
 EOF
 
