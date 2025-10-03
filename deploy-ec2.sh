@@ -2,7 +2,6 @@
 
 # Script de despliegue automático para ChatNode en AWS EC2
 
-
 echo "🚀 Iniciando despliegue de ChatNode en AWS EC2..."
 
 # Colores para output
@@ -158,7 +157,7 @@ server {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -176,7 +175,7 @@ server {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -193,17 +192,6 @@ EOF
 # Habilitar el sitio
 sudo ln -sf /etc/nginx/sites-available/chatnode /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-
-# Añadir configuración adicional para WebSockets
-print_status "Añadiendo configuración adicional para WebSockets..."
-# Crear archivo de configuración adicional en lugar de modificar nginx.conf
-sudo tee /etc/nginx/conf.d/websockets.conf > /dev/null <<EOF
-# Configuración adicional para WebSockets
-map \$http_upgrade \$connection_upgrade {
-    default upgrade;
-    '' close;
-}
-EOF
 
 # Verificar configuración de Nginx
 print_status "Verificando configuración de Nginx..."
