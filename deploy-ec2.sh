@@ -147,6 +147,15 @@ fi
 
 # 9. Configurar Nginx como proxy reverso
 print_status "Configurando Nginx..."
+
+# Limpiar configuraciones existentes para evitar conflictos
+print_status "Limpiando configuraciones existentes de Nginx..."
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-enabled/chatnode
+sudo rm -f /etc/nginx/sites-available/chatnode
+
+# Crear configuración limpia para ChatNode
+print_status "Creando configuración de Nginx para ChatNode..."
 sudo tee /etc/nginx/sites-available/chatnode > /dev/null <<EOF
 server {
     listen 80;
@@ -190,33 +199,95 @@ server {
 EOF
 
 # Habilitar el sitio
+print_status "Habilitando sitio de ChatNode..."
 sudo ln -sf /etc/nginx/sites-available/chatnode /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
 
-# Verificar configuración de Nginx
-print_status "Verificando configuración de Nginx..."
+# Verificar que no hay configuraciones duplicadas
+print_status "Verificando configuraciones de Nginx..."
 sudo nginx -t
 
 if [ $? -eq 0 ]; then
+    print_status "✅ Configuración de Nginx válida"
     print_status "Reiniciando Nginx..."
     sudo systemctl restart nginx
     sudo systemctl enable nginx
+    print_status "✅ Nginx configurado y reiniciado correctamente"
 else
-    print_error "Error en la configuración de Nginx"
-    exit 1
+    print_error "❌ Error en la configuración de Nginx"
+    print_status "Detalles del error:"
+    sudo nginx -t 2>&1
+    print_status "Intentando reparar configuración..."
+    
+    # Intentar reparar eliminando configuraciones problemáticas
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo rm -f /etc/nginx/sites-enabled/chatnode
+    
+    # Verificar configuración base de Nginx
+    print_status "Verificando configuración base de Nginx..."
+    sudo nginx -t
+    
+    if [ $? -eq 0 ]; then
+        print_status "Recreando configuración de ChatNode..."
+        sudo tee /etc/nginx/sites-available/chatnode > /dev/null <<EOF
+server {
+    listen 80;
+    server_name _;
+    
+    location / {
+        proxy_pass http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+        sudo ln -sf /etc/nginx/sites-available/chatnode /etc/nginx/sites-enabled/
+        sudo nginx -t
+        
+        if [ $? -eq 0 ]; then
+            print_status "✅ Configuración reparada exitosamente"
+            sudo systemctl restart nginx
+        else
+            print_error "❌ No se pudo reparar la configuración de Nginx"
+            print_status "Continuando sin Nginx (aplicación disponible en puerto 4000)"
+        fi
+    else
+        print_error "❌ Error crítico en configuración base de Nginx"
+        print_status "Continuando sin Nginx (aplicación disponible en puerto 4000)"
+    fi
 fi
 
 # 10. Verificar que todo esté funcionando
 print_status "Verificando servicios..."
 sleep 10
 
+# Función para verificar conectividad
+check_service() {
+    local service_name=$1
+    local url=$2
+    local expected_code=${3:-200}
+    
+    print_status "Verificando $service_name..."
+    local response_code=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo "000")
+    
+    if [ "$response_code" = "$expected_code" ] || [ "$response_code" = "000" ]; then
+        print_status "✅ $service_name: Respondiendo correctamente (HTTP $response_code)"
+        return 0
+    else
+        print_warning "⚠️ $service_name: Respuesta inesperada (HTTP $response_code)"
+        return 1
+    fi
+}
+
 # Verificar que la aplicación esté sirviendo archivos
-print_status "Verificando archivos estáticos..."
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ || echo "Error accediendo a la aplicación"
+check_service "Aplicación principal" "http://localhost:4000/"
 
 # Verificar Socket.IO
-print_status "Verificando Socket.IO..."
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/socket.io/ || echo "Error accediendo a Socket.IO"
+check_service "Socket.IO" "http://localhost:4000/socket.io/"
 
 # Verificar PM2
 print_status "Verificando PM2..."
@@ -227,6 +298,19 @@ else
     print_warning "⚠️ PM2: Verificar estado de la aplicación"
     print_status "Ejecutando: pm2 status"
     pm2 status
+    
+    # Intentar reiniciar si no está funcionando
+    if [ "$pm2_status" != "online" ]; then
+        print_status "Intentando reiniciar aplicación..."
+        pm2 restart chat-app
+        sleep 5
+        pm2_status=$(pm2 jlist 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+        if [ "$pm2_status" = "online" ]; then
+            print_status "✅ PM2: Aplicación reiniciada exitosamente"
+        else
+            print_error "❌ PM2: No se pudo reiniciar la aplicación"
+        fi
+    fi
 fi
 
 # Verificar Nginx
@@ -234,42 +318,95 @@ print_status "Verificando Nginx..."
 nginx_status=$(sudo systemctl is-active nginx 2>/dev/null || echo "unknown")
 if [ "$nginx_status" = "active" ]; then
     print_status "✅ Nginx: Servicio activo"
+    
+    # Verificar que Nginx esté sirviendo la aplicación
+    nginx_response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ 2>/dev/null || echo "000")
+    if [ "$nginx_response" = "200" ] || [ "$nginx_response" = "000" ]; then
+        print_status "✅ Nginx: Proxy funcionando correctamente"
+    else
+        print_warning "⚠️ Nginx: Proxy no está funcionando (HTTP $nginx_response)"
+        print_status "Verificando configuración de Nginx..."
+        sudo nginx -t
+    fi
 else
     print_warning "⚠️ Nginx: Verificar estado del servicio"
     print_status "Ejecutando: sudo systemctl status nginx"
     sudo systemctl status nginx --no-pager
+    
+    # Intentar reiniciar Nginx si no está activo
+    if [ "$nginx_status" != "active" ]; then
+        print_status "Intentando reiniciar Nginx..."
+        sudo systemctl restart nginx
+        sleep 3
+        nginx_status=$(sudo systemctl is-active nginx 2>/dev/null || echo "unknown")
+        if [ "$nginx_status" = "active" ]; then
+            print_status "✅ Nginx: Servicio reiniciado exitosamente"
+        else
+            print_error "❌ Nginx: No se pudo reiniciar el servicio"
+        fi
+    fi
 fi
 
 # Obtener IP pública
 public_ip=$(curl -s http://checkip.amazonaws.com/ 2>/dev/null || echo "No disponible")
 
+# Verificar estado final de todos los servicios
+print_status "Resumen final del despliegue..."
+
+# Estado de PM2
+pm2_final_status=$(pm2 jlist 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+nginx_final_status=$(sudo systemctl is-active nginx 2>/dev/null || echo "unknown")
+
 echo ""
 echo "🎉 ¡Despliegue completado!"
 echo "=================================="
-echo "📱 Aplicación disponible en:"
-echo "   • URL directa: http://$public_ip:4000"
-echo "   • URL con Nginx: http://$public_ip"
+echo "📊 ESTADO DE SERVICIOS:"
+echo "   • PM2: $pm2_final_status"
+echo "   • Nginx: $nginx_final_status"
+echo "   • IP Pública: $public_ip"
 echo ""
-echo "🔧 Comandos útiles:"
+echo "📱 Aplicación disponible en:"
+if [ "$nginx_final_status" = "active" ]; then
+    echo "   • URL principal: http://$public_ip (con Nginx)"
+    echo "   • URL directa: http://$public_ip:4000"
+else
+    echo "   • URL directa: http://$public_ip:4000 (sin Nginx)"
+fi
+echo ""
+echo "🔧 COMANDOS DE GESTIÓN:"
 echo "   • Ver estado: pm2 status"
 echo "   • Ver logs: pm2 logs chat-app"
-echo "   • Reiniciar: pm2 restart chat-app"
+echo "   • Reiniciar app: pm2 restart chat-app"
 echo "   • Monitoreo: pm2 monit"
-echo "   • Ver logs de Nginx: sudo tail -f /var/log/nginx/error.log"
+echo "   • Ver logs Nginx: sudo tail -f /var/log/nginx/error.log"
+echo "   • Ver logs acceso: sudo tail -f /var/log/nginx/access.log"
 echo ""
-echo "📋 IMPORTANTE:"
-echo "   • Verificar que el puerto 4000 esté abierto en el Security Group de EC2"
-echo "   • Si no funciona, revisar: sudo ufw status"
-echo "   • Para debugging: pm2 logs chat-app --lines 50"
+echo "🔧 COMANDOS DE DEBUGGING:"
+echo "   • Verificar app: curl http://localhost:4000/"
+echo "   • Verificar Socket.IO: curl http://localhost:4000/socket.io/"
+echo "   • Verificar Nginx: curl http://localhost/"
+echo "   • Reiniciar todo: sudo systemctl restart nginx && pm2 restart chat-app"
+echo "   • Ver configuración Nginx: sudo nginx -t"
 echo ""
-echo "🔧 DEBUGGING DE SOCKET.IO:"
-echo "   • Verificar conexión: curl http://$public_ip/socket.io/"
-echo "   • Ver logs en tiempo real: pm2 logs chat-app --lines 100"
-echo "   • Verificar Nginx: sudo tail -f /var/log/nginx/access.log"
-echo "   • Reiniciar servicios: sudo systemctl restart nginx && pm2 restart chat-app"
+echo "📋 CONFIGURACIÓN DE SEGURIDAD:"
+echo "   • Verificar Security Group EC2: puerto 80 y 4000 abiertos"
+echo "   • Verificar firewall local: sudo ufw status"
+echo "   • Verificar puertos: sudo netstat -tlnp | grep -E ':(80|4000)'"
 echo ""
 echo "🌐 URLs DE PRUEBA:"
-echo "   • Aplicación: http://$public_ip"
-echo "   • Socket.IO: http://$public_ip/socket.io/"
-echo "   • Puerto directo: http://$public_ip:4000"
+if [ "$nginx_final_status" = "active" ]; then
+    echo "   • Aplicación principal: http://$public_ip"
+    echo "   • Socket.IO: http://$public_ip/socket.io/"
+    echo "   • Puerto directo: http://$public_ip:4000"
+else
+    echo "   • Aplicación: http://$public_ip:4000"
+    echo "   • Socket.IO: http://$public_ip:4000/socket.io/"
+fi
+echo ""
+echo "🚨 SI ALGO NO FUNCIONA:"
+echo "   1. Verificar logs: pm2 logs chat-app --lines 50"
+echo "   2. Verificar Nginx: sudo systemctl status nginx"
+echo "   3. Reiniciar servicios: sudo systemctl restart nginx && pm2 restart chat-app"
+echo "   4. Verificar configuración: sudo nginx -t"
+echo "   5. Verificar puertos: sudo netstat -tlnp | grep -E ':(80|4000)'"
 echo "=================================="
