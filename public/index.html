@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Práctica de evaluación Socket</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js"></script>
+</head>
+<body>
+
+    <div id="panel-bienvenida">
+        <h2>Práctica de evaluación usando Sockets de comunicación - Ing. Alex R.G.</h2>
+        <input id="persona" type="text" placeholder="Ingresa tu nombre">
+        <button id="ingresar" onclick="ingresarAlChat()">Ingresar al chat</button>
+    </div>
+
+    <div id="app-chat" style="display:none;">
+        <h2>Práctica de evaluación 1er. parcial - Saul Martinez </h2>
+        <h2 class="nube box">Chat con socket</h2>
+        
+        <!-- Panel de configuración de notificaciones -->
+        <div id="config-panel" style="background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px;">
+            <h4>🔊 Configuración de Notificaciones</h4>
+            <label>
+                <input type="checkbox" id="audio-enabled" checked> Activar sonido
+            </label>
+            <br>
+            <label>
+                Volumen: <input type="range" id="volume-slider" min="0" max="100" value="40" style="width: 100px;">
+                <span id="volume-display">40%</span>
+            </label>
+            <br>
+            <label>
+                Tipo de sonido:
+                <select id="sound-type">
+                    <option value="normal">Normal</option>
+                    <option value="special">Especial (Musical)</option>
+                    <option value="simple">Simple</option>
+                </select>
+            </label>
+            <br>
+            <label>
+                <input type="checkbox" id="visual-notifications" checked> Notificaciones visuales
+            </label>
+        </div>
+        
+        <div id="ventana-mensajes">
+            <div id="output"></div>
+            <div id="escribiendo-mensaje"></div>
+        </div>
+        <input id="usuario" type="text" placeholder="Tu nombre">
+        <input id="mensaje" type="text" placeholder="Ingresa un mensaje">
+        <button id="boton-enviar">Enviar</button>
+    </div>
+
+    <script src="/chat.js"></script>
+
+</body>
+</html>
