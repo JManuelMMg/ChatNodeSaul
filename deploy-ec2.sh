@@ -78,7 +78,7 @@ export GIT_ASKPASS=/bin/echo
 
 print_status "Clonando repositorio público desde GitHub..."
 # Clonar repositorio público (sin autenticación)
-git clone --depth 1 https://github.com/saulcortesmartinez/ChatNodeSaul.git
+git clone --depth 1 https://github.com/JManuelMMg/ChatNodeSaul.git
 cd ChatNodeSaul
 
 # Verificar que la clonación fue exitosa
@@ -89,12 +89,12 @@ if [ ! -f "index.js" ]; then
     
     # Descargar como ZIP desde GitHub
     print_status "Descargando repositorio como ZIP..."
-    wget -O ChatNodeSaul.zip https://github.com/saulcortesmartinez/ChatNodeSaul/archive/refs/heads/main.zip
+    wget -O ChatNodeSaul.zip https://github.com/JManuelMMg/ChatNodeSaul/archive/refs/heads/master.zip
     
     if [ -f "ChatNodeSaul.zip" ]; then
         print_status "Extrayendo archivo ZIP..."
         unzip -q ChatNodeSaul.zip
-        mv ChatNodeSaul-main ChatNodeSaul
+        mv ChatNodeSaul-master ChatNodeSaul
         rm ChatNodeSaul.zip
         cd ChatNodeSaul
         
